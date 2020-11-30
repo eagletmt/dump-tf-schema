@@ -153,24 +153,13 @@ where
         ));
     }
     let network_type = parts[2];
-    if network_type != "unix" {
-        return Err(anyhow::anyhow!(
-            "Unsupported network type: {}",
-            network_type
-        ));
-    }
-    let network_addr = parts[3].to_owned();
+    let network_addr = parts[3];
     let protocol = parts[4];
     if protocol != "grpc" {
         return Err(anyhow::anyhow!("Unsupported protocol: {}", protocol));
     }
 
-    let channel = tonic::transport::Channel::from_static("http://[::]:50051")
-        .connect_with_connector(tower::service_fn(move |_| {
-            let path = network_addr.clone();
-            tokio::net::UnixStream::connect(path)
-        }))
-        .await?;
+    let channel = connect(&network_type, &network_addr).await?;
     let mut provider_client = crate::proto::provider_client::ProviderClient::new(channel.clone());
     let resp = provider_client
         .get_schema(crate::proto::get_provider_schema::Request {})
@@ -346,8 +335,69 @@ pub async fn discover_provider(
         plugin_file.path().display()
     );
     std::io::copy(&mut file, &mut plugin_file)?;
-    use std::os::unix::fs::PermissionsExt as _;
     let path = plugin_file.into_temp_path();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o744))?;
+    set_permission(&path)?;
     Ok(path)
+}
+
+#[cfg(unix)]
+async fn connect(
+    network_type: &str,
+    network_addr: &str,
+) -> Result<tonic::transport::Channel, anyhow::Error> {
+    match network_type {
+        "unix" => {
+            let network_addr = network_addr.to_owned();
+            Ok(tonic::transport::Channel::from_static("http://[::]:50051")
+                .connect_with_connector(tower::service_fn(move |_| {
+                    let path = network_addr.clone();
+                    tokio::net::UnixStream::connect(path)
+                }))
+                .await?)
+        }
+        "tcp" => Ok(
+            tonic::transport::Channel::from_shared(format!("http://{}", network_addr))?
+                .connect()
+                .await?,
+        ),
+        _ => Err(anyhow::anyhow!(
+            "Unsupported network_type: {}",
+            network_type
+        )),
+    }
+}
+
+#[cfg(windows)]
+async fn connect(
+    network_type: &str,
+    network_addr: &str,
+) -> Result<tonic::transport::Channel, anyhow::Error> {
+    match network_type {
+        "tcp" => Ok(
+            tonic::transport::Channel::from_shared(format!("http://{}", network_addr))?
+                .connect()
+                .await?,
+        ),
+        _ => Err(anyhow::anyhow!(
+            "Unsupported network_type: {}",
+            network_type
+        )),
+    }
+}
+
+#[cfg(unix)]
+fn set_permission<P>(path: P) -> Result<(), std::io::Error>
+where
+    P: AsRef<std::path::Path>,
+{
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o744))
+}
+
+#[cfg(windows)]
+fn set_permission<P>(_: P) -> Result<(), std::io::Error>
+where
+    P: AsRef<std::path::Path>,
+{
+    Ok(())
 }
