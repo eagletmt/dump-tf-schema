@@ -184,10 +184,12 @@ where
 fn build_block_schema(block: &crate::proto::schema::Block) -> Result<BlockSchema, anyhow::Error> {
     let mut attributes = std::collections::HashMap::new();
     for attr in &block.attributes {
-        attributes.insert(
-            attr.name.to_owned(),
-            TerraformType::from_serialized(&serde_json::from_slice(&attr.r#type)?)?,
-        );
+        if !attr.computed {
+            attributes.insert(
+                attr.name.to_owned(),
+                TerraformType::from_serialized(&serde_json::from_slice(&attr.r#type)?)?,
+            );
+        }
     }
     let mut blocks = std::collections::HashMap::new();
     for nested_block in &block.block_types {
