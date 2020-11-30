@@ -14,7 +14,7 @@ anyhow = "1.0"
 env_logger = "0.8"
 log = "0.4"
 prost = "0.6"
-reqwest = { version = "0.10", features = ["json"] }
+reqwest = { version = "0.10", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.9"
@@ -23,4 +23,4 @@ tempfile = "3.1"
 tokio = { version = "0.2", features = ["macros", "process", "uds"] }
 tonic = "0.3"
 tower = "0.3"
-zip = "0.5"
+zip = { version = "0.5", default-features = false, features = ["deflate"] }
